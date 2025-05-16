@@ -1,0 +1,80 @@
+version: '3.8' # Versão do Docker Compose
+
+services:         # Lista de serviços/containers
+  zookeeper:
+    image: bitnami/zookeeper:3.8 # Imagem oficial do Zookeeper
+    networks: # Conecta à rede kafka_net
+      - kafka_net
+    environment:
+      - ALLOW_ANONYMOUS_LOGIN=yes # Permite conexão sem autenticação
+    healthcheck: # Verifica se o serviço está saudável
+      test: ["CMD", "zkServer.sh", "status"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  kafka:
+    image: bitnami/kafka:3.8 # Imagem oficial do Kafka
+    networks:
+      - kafka_net
+    environment:
+      - KAFKA_CFG_ZOOKEEPER_CONNECT=zookeeper:2181 # Conexão com Zookeeper
+      - ALLOW_PLAINTEXT_LISTENER=yes # Habilita comunicação não criptografada
+      - KAFKA_CFG_ADVERTISED_LISTENERS=PLAINTEXT://kafka:9092 # Endereço interno no Docker
+      - KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP=PLAINTEXT:PLAINTEXT
+      - KAFKA_CFG_LISTENERS=PLAINTEXT://:9092
+      - KAFKA_AUTO_CREATE_TOPICS_ENABLE=true # Cria tópicos automaticamente
+    depends_on:
+      zookeeper:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "kafka-topics.sh", "--bootstrap-server", "localhost:9092", "--list"] # Verifica se consegue listar tópicos
+      interval: 10s
+      timeout: 10s
+      retries: 20 # mais tentativas pois o kafka demora iniciar
+
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest # Interface web para monitoramento
+    networks:
+      - kafka_net
+    ports:
+      - "8080:8080" # Expõe a porta 8080 para acesso via navegador
+    environment:
+      - KAFKA_CLUSTERS_0_NAME=local
+      - KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS=kafka:9092 # Conecta ao Kafka
+      - KAFKA_CLUSTERS_0_ZOOKEEPER=zookeeper:2181
+    depends_on:
+      kafka:
+        condition: service_healthy # Só inicia depois do Kafka estar pronto
+
+  producer:
+    container_name: producer # Constrói a partir do Dockerfile na pasta producer
+    build:
+      context: .
+      dockerfile: Dockerfile.producer
+    networks:
+      - kafka_net
+    environment:
+      - KAFKA_BROKER=kafka:9092 # Endereço do Kafka para conexão
+
+  consumer:
+    container_name: consumer
+    build:
+      context: .
+      dockerfile: Dockerfile.consumer
+    networks:
+      - kafka_net
+    environment:
+      - KAFKA_BROKER=kafka:9092
+
+networks: # Configuração de rede
+  kafka_net:
+    driver: bridge # Cria uma rede virtual isolada
+    name: kafka_network # Nome personalizado para a rede
+
+
+    #Zookeeper: Coordenador do Kafka (gerencia metadados)
+    #Kafka: Broker de mensagens principal
+    #Kafka UI: Painel web para monitoramento
+    #Producer/Consumer: Aplicações Python personalizadas
+    #Bridge Network: Comunicação segura entre containers via nomes (ex: kafka:9092)

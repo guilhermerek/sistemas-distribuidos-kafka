@@ -1,0 +1,14 @@
+# Imagem Base
+FROM python:3.9
+
+# Cria Pasta de trabalho
+WORKDIR /app
+
+# Copiando script
+COPY producer.py /app
+
+# Instalando dependências
+RUN pip install kafka-python faker
+
+# Rodando script
+CMD ["python", "producer.py"]
